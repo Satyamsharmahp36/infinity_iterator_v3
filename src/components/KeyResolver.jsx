@@ -46,7 +46,7 @@ Return only the closest matching key.`;
 
   return (
     <div className="bg-white p-6 border rounded shadow mt-6">
-      <h2 className="text-lg font-semibold mb-2">🔎 Semantic Key Resolver (Gemini)</h2>
+      <h2 className="text-lg font-semibold mb-2">🔎 Semantic Key Resolver </h2>
       <input
         type="text"
         className="w-full p-2 border border-gray-300 rounded mb-2"
