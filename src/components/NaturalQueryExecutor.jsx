@@ -3,7 +3,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-// Detect if the user is asking for line total summation
 const isLineTotalSumQuery = (query) => {
   const normalized = query.toLowerCase();
   return (
@@ -12,7 +11,6 @@ const isLineTotalSumQuery = (query) => {
   );
 };
 
-// Flatten nested JSON into key-value pairs
 const flattenJSON = (obj, prefix = '', result = {}) => {
   for (const key in obj) {
     const value = obj[key];
@@ -37,13 +35,11 @@ const sumLineTotals = (flatJSON) => {
   const keysUsed = [];
 
   for (const key in flatJSON) {
-    const lower = key.toLowerCase();
-
-    const isValid = (
-      lower.includes("lineoveralltotals.lineTotal".toLowerCase()) &&
-      !lower.includes("oldlinetotal") &&
-      !lower.includes("changeordergrandtotalset")
-    );
+    const isValid =
+      key.endsWith(".lineOverallTotals.lineTotal") &&
+      !key.includes("oldLineTotal") &&
+      !key.includes("Affected") &&
+      !key.includes("changeOrderGrandTotalSet");
 
     if (isValid) {
       const value = flatJSON[key];
@@ -58,16 +54,66 @@ const sumLineTotals = (flatJSON) => {
   return { sum, count, keysUsed };
 };
 
+// Helper to extract structured results with paths
+const extractStructuredResults = (flatJSON, extractFields) => {
+  const results = [];
+  const processedPaths = new Set();
+  
+  for (const [fullPath, value] of Object.entries(flatJSON)) {
+    if (processedPaths.has(fullPath)) continue;
+    
+    const matchedField = extractFields.find(field => 
+      fullPath.toLowerCase().includes(field.toLowerCase())
+    );
+    
+    if (matchedField && value !== null && value !== undefined && value !== '') {
+      // Extract path components
+      const pathParts = fullPath.split('.');
+      const arrayMatch = fullPath.match(/\[(\d+)\]/);
+      const arrayIndex = arrayMatch ? parseInt(arrayMatch[1]) : null;
+      
+      // Try to find related fields in the same object context
+      const basePath = fullPath.replace(/\.[^.]*$/, '');
+      const relatedFields = {};
+      
+      // Look for common related fields
+      const commonFields = ['eventId', 'primeLineNo', 'lineNo', 'id', 'transactionType'];
+      commonFields.forEach(field => {
+        const relatedPath = `${basePath}.${field}`;
+        if (flatJSON[relatedPath] !== undefined) {
+          relatedFields[field] = flatJSON[relatedPath];
+        }
+      });
+      
+      results.push({
+        field: matchedField,
+        value: value,
+        fullPath: fullPath,
+        arrayIndex: arrayIndex,
+        basePath: basePath,
+        relatedFields: relatedFields
+      });
+      
+      processedPaths.add(fullPath);
+    }
+  }
+  
+  return results;
+};
 
 export default function NaturalQueryExecutor({ jsonData }) {
   const [userQuery, setUserQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [structuredResults, setStructuredResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [parsedPlan, setParsedPlan] = useState(null);
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'table'
 
   const handleQuery = async () => {
     if (!userQuery || !jsonData) return;
     setIsLoading(true);
+    setResults([]);
+    setStructuredResults([]);
 
     try {
       const cleanedQuery = userQuery.trim().toLowerCase();
@@ -122,10 +168,11 @@ Query: "${userQuery}"
       const plan = JSON.parse(text);
       setParsedPlan(plan);
 
-      const filterKey = Object.keys(plan.filter)[0];
-      const filterValue = plan.filter[filterKey];
-
       const flat = flattenJSON(jsonData);
+      const structured = extractStructuredResults(flat, plan.extract);
+      setStructuredResults(structured);
+
+      // Keep original results for backward compatibility
       const matches = Object.entries(flat).filter(([key]) =>
         plan.extract.some(field => key.toLowerCase().includes(field.toLowerCase()))
       );
@@ -144,13 +191,146 @@ Query: "${userQuery}"
     setIsLoading(false);
   };
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const renderCardView = () => (
+    <div className="space-y-4">
+      {structuredResults.map((item, index) => (
+        <div key={index} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
+                {item.field}
+              </span>
+              {item.arrayIndex !== null && (
+                <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                  Index: {item.arrayIndex}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => copyToClipboard(item.fullPath)}
+              className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs transition-colors"
+              title="Copy path"
+            >
+              📋 Path
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-1">Value:</p>
+              <p className="bg-white p-2 rounded border font-mono text-sm break-all">
+                {item.value}
+              </p>
+            </div>
+            
+            {Object.keys(item.relatedFields).length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-1">Related Fields:</p>
+                <div className="bg-white p-2 rounded border space-y-1">
+                  {Object.entries(item.relatedFields).map(([key, value]) => (
+                    <div key={key} className="flex justify-between text-xs">
+                      <span className="font-medium text-gray-600">{key}:</span>
+                      <span className="font-mono text-gray-800 ml-2 truncate">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
+              🔍 Full Path
+            </summary>
+            <p className="mt-1 bg-gray-100 p-2 rounded text-xs font-mono break-all text-gray-700">
+              {item.fullPath}
+            </p>
+          </details>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderTableView = () => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Field
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Value
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Event ID
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Prime Line No
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Index
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+              Path
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {structuredResults.map((item, index) => (
+            <tr key={index} className="hover:bg-gray-50">
+              <td className="px-4 py-3 whitespace-nowrap">
+                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                  {item.field}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <div className="max-w-xs truncate font-mono text-sm" title={item.value}>
+                  {item.value}
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <div className="max-w-xs truncate font-mono text-xs text-gray-600" title={item.relatedFields.eventId}>
+                  {item.relatedFields.eventId || '-'}
+                </div>
+              </td>
+              <td className="px-4 py-3 text-center">
+                <span className="font-mono text-sm">
+                  {item.relatedFields.primeLineNo || '-'}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center">
+                <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                  {item.arrayIndex !== null ? item.arrayIndex : '-'}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <button
+                  onClick={() => copyToClipboard(item.fullPath)}
+                  className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs transition-colors"
+                  title={item.fullPath}
+                >
+                  📋 Copy
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="bg-white p-6 border rounded shadow mt-6">
       <h2 className="text-lg font-semibold mb-2">🧠 Natural Query Executor</h2>
 
       <input
         type="text"
-        placeholder="e.g. sum of line total"
+        placeholder="e.g. sum of line total, get eventId and primeLineNo"
         className="w-full p-2 border border-gray-300 rounded mb-4"
         value={userQuery}
         onChange={(e) => setUserQuery(e.target.value)}
@@ -173,34 +353,72 @@ Query: "${userQuery}"
         </div>
       )}
 
-      {results.length > 0 && (
-        <div className="mt-4 max-h-60 overflow-y-auto">
-          <h3 className="font-semibold mb-2">📄 Results ({results.length}):</h3>
-          {results.map((item, index) => (
-            <div key={index} className="bg-gray-100 p-2 rounded mb-3">
-              {item.values.sum !== undefined ? (
-                <div>
-                  <p><strong>Sum:</strong> {item.values.sum}</p>
-                  <p><strong>Count:</strong> {item.values.count}</p>
-                  <details className="text-sm text-blue-700">
-                    <summary className="cursor-pointer">🔎 Keys Used</summary>
-                    <ul className="text-xs font-mono list-disc ml-5 mt-1">
-                      {item.values.keysUsed.map((k, i) => <li key={i}>{k}</li>)}
-                    </ul>
-                  </details>
+      {(structuredResults.length > 0 || (results.length > 0 && results[0].values.sum !== undefined)) && (
+        <div className="mt-4">
+          {/* View Toggle */}
+          {structuredResults.length > 0 && (
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">📄 Results ({structuredResults.length}):</h3>
+              <div className="flex bg-gray-200 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    viewMode === 'cards' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  📋 Cards
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    viewMode === 'table' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  📊 Table
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="max-h-96 overflow-y-auto">
+            {/* Line Total Sum Results */}
+            {results.length > 0 && results[0].values.sum !== undefined && (
+              <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-4">
+                <h4 className="font-semibold text-green-800 mb-2">💰 Line Total Sum</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Total Sum:</p>
+                    <p className="text-2xl font-bold text-green-600">{results[0].values.sum}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Count:</p>
+                    <p className="text-xl font-semibold text-gray-800">{results[0].values.count}</p>
+                  </div>
                 </div>
-              ) : (
-                <div>
-                  <strong>Extracted Values:</strong>
-                  <ul className="text-xs font-mono list-disc ml-4">
-                    {item.values.extracted.map((v, i) => (
-                      <li key={i}>{v}</li>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
+                    🔎 Show Keys Used ({results[0].values.keysUsed.length})
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {results[0].values.keysUsed.map((key, i) => (
+                      <li key={i} className="text-xs font-mono bg-white p-1 rounded border">
+                        {key}
+                      </li>
                     ))}
                   </ul>
-                </div>
-              )}
-            </div>
-          ))}
+                </details>
+              </div>
+            )}
+
+            {/* Structured Results */}
+            {structuredResults.length > 0 && (
+              viewMode === 'cards' ? renderCardView() : renderTableView()
+            )}
+          </div>
         </div>
       )}
     </div>
