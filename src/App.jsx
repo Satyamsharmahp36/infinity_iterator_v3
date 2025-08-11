@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
 import KeyMapperViewer from './components/KeyMapperViewer'
+import AIQueryIterator from './components/AIQueryIterator'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [devMode, setDevMode] = useState(false)
 
   return (
     <>
-      <KeyMapperViewer/>
+      {devMode ? (
+        <KeyMapperViewer />
+      ) : (
+        <AIQueryIterator onDevModeToggle={() => setDevMode(true)} />
+      )}
     </>
   )
 }
