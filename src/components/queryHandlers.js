@@ -415,6 +415,7 @@ export const QueryHandlers = {
         grandDiscount: totals.grandDiscount ?? 'N/A',
         grandTax: totals.grandTax ?? 'N/A',
         grandTotal: totals.grandTotal ?? 'N/A',
+        orderNo: txn.orderNo ?? 'N/A',
         lineSubTotal: totals.lineSubTotal ?? 'N/A'
       });
     }
