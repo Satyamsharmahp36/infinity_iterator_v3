@@ -18,6 +18,81 @@ export const knownTransactionTypes = [
     'FULFILLED_SALE': ['FULFILLED SALE', 'FULFILLED_SALE', 'FULFILLEDSALE']
   };
 
+export const baseCommands = [
+  {
+    id: 'MTL_STATUS',
+    commands: [
+      'What is the MTL status',
+      'Give me MTL status',
+      'Show MTL status',
+      'MTL status',
+      'Get MTL status'
+    ],
+    handler: 'getMTLStatus',
+    description: 'Get MTL transaction status information'
+  },
+  {
+    id: 'ORDER_TOTAL',
+    commands: [
+      'Give me Order total',
+      'Show order total',
+      'Order total by transaction type',
+      'Get order totals',
+      'Order total'
+    ],
+    handler: 'getOrderTotalByTransactionType',
+    description: 'Get order totals by transaction type'
+  },
+  {
+    id: 'PAYMENT_DETAILS',
+    commands: [
+      'Give me payment details',
+      'Show payment details',
+      'Payment details',
+      'Get payment info',
+      'Payment information'
+    ],
+    handler: 'getPaymentDetails',
+    description: 'Get payment and credit card details'
+  },
+  {
+    id: 'ITEM_DETAILS',
+    commands: [
+      'Give me the item details',
+      'Show item details',
+      'Item line details',
+      'Get item information',
+      'Item details'
+    ],
+    handler: 'getItemLineTotals',
+    description: 'Get item line totals and details'
+  },
+  {
+    id: 'ORDER_ATTRIBUTES',
+    commands: [
+      'give me order attributes',
+      'Show order attributes',
+      'Order attributes',
+      'Get order attributes',
+      'Order information'
+    ],
+    handler: 'getOrderAttributes',
+    description: 'Get order attributes and totals'
+  },
+  {
+    id: 'STORE_DETAILS',
+    commands: [
+      'What is store details',
+      'Give me store details',
+      'Show store details',
+      'Store information',
+      'Store details'
+    ],
+    handler: 'getStoreDetails',
+    description: 'Get store location and details'
+  }
+];
+
   
   
   export const queryPatterns = {
